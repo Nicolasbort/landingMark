@@ -1,28 +1,31 @@
 #include<opencv2/opencv.hpp>
 #include<iostream>
-#include<tuple>
-
 
 using namespace cv;
 using namespace std;
 
+
 //limiares de saturacao e valor
-int MINSAT = 40;
+int MINSAT = 50; //40
 int MAXSAT = 255;
-int MINVAL = 40;
-int MAXVAL = 255;;
+int MINVAL = 50; //40
+int MAXVAL = 255;
 
 //limiares da cor amarela
-int YELLOW = 30;
-int DYELLOW = 25;
+int YELLOW = 25; //30
+int DYELLOW = 15; //25
 int MINYELLOW = YELLOW - DYELLOW;
 int MAXYELLOW = YELLOW + DYELLOW;
+int ARR_MAXYELLOW[3] = {MAXYELLOW, MAXSAT, MAXVAL};
+int ARR_MINYELLOW[3] = {MINYELLOW, MINSAT, MINVAL};
 
 //limiares da cor azul
-int BLUE = 110;
-int DBLUE = 25;
+int BLUE = 120; //110
+int DBLUE = 20; //25
 int MINBLUE = BLUE - DBLUE;
 int MAXBLUE = BLUE + DBLUE;
+int ARR_MAXBLUE[3] = {MAXBLUE, MAXSAT, MAXVAL};
+int ARR_MINBLUE[3] = {MINBLUE, MINSAT, MINVAL};
 
 //parametros de filtros
 int GAUSSIAN_FILTER = 3;
@@ -32,6 +35,10 @@ int KERNEL_RESOLUTION = 7;
 float ARESTA = 500.0f; //aresta da base (em mm)
 float RAIO = 200.0f; //raio do centro da base 
 int RESOLUTION = 50;
+
+
+bool IMAGEM = false;
+bool VIDEO = true;
 
 
 class LandingMark
@@ -48,9 +55,12 @@ public:
 
 	int focal_lenght;
 
-	tuple<int, int> center;
+	int center[2];
 
-	Mat camera_matrix, dist_coeffs;
+	Mat camera_matrix, dist_coeffs, kernel;
+
+	vector<vector<Point> > contours;
+	vector<Vec4i> hierarchy;
 
 
 	LandingMark()
@@ -61,6 +71,8 @@ public:
 		this->x = 0;
 		this->y = 0;
 		this->z = 0;
+
+		this->kernel = Mat::ones(KERNEL_RESOLUTION, KERNEL_RESOLUTION, CV_8U);
 	}
 
 
@@ -71,7 +83,8 @@ public:
 
 		this->focal_lenght = this->rows;
 
-		this->center = make_tuple(this->rows/2, this->cols/2);
+		this->center[0] = (this->rows/2);
+		this->center[1] = (this->cols/2);
 
 		this->camera_matrix = (Mat_<double>(3,3) << 
 			this->focal_lenght, 0, this->rows/2,
@@ -92,22 +105,26 @@ public:
 	}
 
 
-	void processImage()
+	Mat processImage()
 	{
-		Mat hsv;
 
-		Mat kernel = Mat::ones(KERNEL_RESOLUTION, KERNEL_RESOLUTION, CV_8U);
+        cvtColor(this->imagem, this->imagem, COLOR_BGR2HSV);
+
+		Mat quadrado_azul = this->imlimiares(this->imagem, ARR_MINBLUE, ARR_MAXBLUE);
+
+		morphologyEx(quadrado_azul, quadrado_azul, MORPH_CLOSE, this->kernel, Point(-1,-1), 1);
+
+		findContours(quadrado_azul, this->contours, this->hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
+
+		return quadrado_azul;
 	}
 
 
 	Mat imfill(Mat img)
 	{
-		vector<vector<Point> > contours;
-  		vector<Vec4i> hierarchy;
 
-		Mat kernel = Mat::ones(KERNEL_RESOLUTION, KERNEL_RESOLUTION, CV_8U);
 
-		morphologyEx(img, img, MORPH_CLOSE, kernel, Point(-1,-1), 3);
+		morphologyEx(img, img, MORPH_CLOSE, this->kernel, Point(-1,-1), 3);
 
 		findContours(img, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
 
@@ -130,19 +147,13 @@ public:
 	}
 
 
-	Mat imlimiares(Mat hsv, tuple<int, int, int> hsvMin, tuple<int, int, int> hsvMax)
+	Mat imlimiares(Mat hsv, int hsvMin[3], int hsvMax[3])
 	{
 		Mat hsvtresh;
 
-		int hsvMin1, hsvMin2, hsvMin3;
-		int hsvMax1, hsvMax2, hsvMax3;
-		
-		tie(hsvMin1, hsvMin2, hsvMin3) = hsvMin;
-		tie(hsvMax1, hsvMax2, hsvMax3) = hsvMax;
+		inRange(hsv, Scalar(hsvMin[0], hsvMin[1], hsvMin[2]), Scalar(hsvMax[0], hsvMax[1], hsvMax[2]), hsvtresh);
 
-		inRange(hsv, Scalar(hsvMin1, hsvMin2, hsvMin3), Scalar(hsvMax1, hsvMax2, hsvMax3), hsvtresh);
-
-		hsvtresh = this->imfill(hsvtresh);
+		//hsvtresh = this->imfill(hsvtresh);
 
 		return hsvtresh;
 	}
@@ -162,101 +173,61 @@ public:
 
 
 
-Mat imfilled(Mat img)
-{
-	vector<vector<Point> > contours;
-	vector<Vec4i> hierarchy;
-
-	inRange(img, Scalar(MINYELLOW, MINSAT, MINVAL), Scalar(MAXYELLOW, MAXSAT, MAXVAL), img);	
-
-	Mat kernel = Mat::ones(KERNEL_RESOLUTION, KERNEL_RESOLUTION, CV_8U);
-
-	morphologyEx(img, img, MORPH_CLOSE, kernel, Point(-1,-1), 3);
-
-	findContours(img, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
-
-
-    vector<vector<Point> >hull( contours.size() );
-    for( size_t i = 0; i < contours.size(); i++ )
-    {
-        convexHull( contours[i], hull[i] );
-    }
-
-
-		for( size_t i = 0; i< contours.size(); i++ )
-	{
-		//Scalar color(255, 255, 255);
-        drawContours( img, contours, 0, 255, -1);
-    	drawContours( img, hull, 0, 255 , -1);
-	}
-
-	return img;
-}
-
-
-Mat getCanny(Mat img)
-{
-
-	vector<vector<Point> > contours;
-  	vector<Vec4i> hierarchy;
-
-	Canny(img, img, 100, 200);
-
-	findContours(img, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
-
- 	for( size_t i = 0; i< contours.size(); i++ )
-    {
-    	Scalar color = Scalar( 255, 255, 255);
-    	drawContours( img, contours, 0, 255, -1);
-    }
-	return img;
-}
-
 int main()
 {
-	//LandingMark mark;
 
-
-	//Mat img = imread("imagem.jpeg");
-
-	/*if (img.empty())
+	if (IMAGEM)
 	{
-		cout << "Imagem vazia!";
-		return 0;
-	}*/
 
-	//mark.setImage(img);
+		//////////// COM IMAGEM ///////////
 
+		
 
+		LandingMark mark;
 
-	//img = imfilled(img);
+		Mat img = imread("imagem.jpeg");
 
-	//cout << "\nCamera Matrix: \n" << mark.dist_coeffs << endl;
-	
-	//imshow("img", img);
+		if (img.empty())
+		{
+			cout << "Imagem vazia!";
+			return 0;
+		}
 
+		img = mark.processImage();
 
+		imshow("", img);
 
-	VideoCapture cap("mark.mp4");
-
-	if(!cap.isOpened()){
-    	cout << "Error opening video stream or file" << endl;
-    	return -1;
-  	}
-
-	Mat frame, frameMod;
-
-	while (true)
-	{
-		cap >> frameMod;
-
-		frameMod = getCanny(frameMod);
-
-		imshow("Frame", frameMod);
-
-		waitKey(100);
+		
 	}
+	else if(VIDEO)
+	{
+	
+		/////////////// COM VIDEO //////////////
 
-	//waitKey(0);
 
+
+		LandingMark mark;
+
+		VideoCapture cap("mark.mp4");
+
+		if(!cap.isOpened()){
+			cout << "Error opening video stream or file" << endl;
+			return -1;
+		}
+
+		Mat frame;
+
+		while (true)
+		{
+			cap >> frame;
+
+			mark.setImage(frame);
+
+			frame = mark.processImage();
+
+			imshow("Frame", frame);
+
+			waitKey(20);
+		}
+	}
 }
