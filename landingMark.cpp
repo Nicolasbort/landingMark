@@ -120,6 +120,36 @@ public:
 	}
 
 
+	Mat drawEllipse()
+	{
+		Mat img_processada = this->processImage();
+
+		for(size_t i = 0; i < this->contours.size(); i++)
+        {
+            size_t count = this->contours[i].size();
+
+            if (count < 6)
+                break;
+
+            Mat pointsf;
+            Mat(this->contours[i]).convertTo(pointsf, CV_32F);
+            RotatedRect box = fitEllipse(pointsf);
+
+            if( MAX(box.size.width, box.size.height) > MIN(box.size.width, box.size.height)*30 )
+                continue;
+
+
+            ellipse(img_processada, box.center, box.size*0.5f, box.angle, 0, 360, 150, 2, CV_AA);
+
+
+            //Centro da elipse
+            cout << "X: " << box.center.x << "Y: " << box.center.y << endl;
+        }
+
+		return img_processada;
+	}
+
+
 	Mat imfill(Mat img)
 	{
 
@@ -178,9 +208,7 @@ int main()
 
 	if (IMAGEM)
 	{
-
 		//////////// COM IMAGEM ///////////
-
 		
 
 		LandingMark mark;
@@ -193,17 +221,17 @@ int main()
 			return 0;
 		}
 
+		mark.setImage(img);
+
 		img = mark.processImage();
 
 		imshow("", img);
 
-		
+		waitKey();
 	}
 	else if(VIDEO)
 	{
-	
 		/////////////// COM VIDEO //////////////
-
 
 
 		LandingMark mark;
@@ -223,7 +251,7 @@ int main()
 
 			mark.setImage(frame);
 
-			frame = mark.processImage();
+			frame = mark.drawEllipse();
 
 			imshow("Frame", frame);
 
