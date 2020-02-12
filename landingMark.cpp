@@ -55,7 +55,7 @@ public:
 
 	int focal_lenght;
 
-	int center[2];
+	int centerX, centerY;
 
 	Mat camera_matrix, dist_coeffs, kernel;
 
@@ -83,8 +83,8 @@ public:
 
 		this->focal_lenght = this->rows;
 
-		this->center[0] = (this->rows/2);
-		this->center[1] = (this->cols/2);
+		this->centerX = img.size().width/2;
+		this->centerY = img.size().height/2;
 
 		this->camera_matrix = (Mat_<double>(3,3) << 
 			this->focal_lenght, 0, this->rows/2,
@@ -112,7 +112,7 @@ public:
 
 		Mat quadrado_azul = this->imlimiares(this->imagem, ARR_MINBLUE, ARR_MAXBLUE);
 
-		morphologyEx(quadrado_azul, quadrado_azul, MORPH_CLOSE, this->kernel, Point(-1,-1), 1);
+		morphologyEx(quadrado_azul, quadrado_azul, MORPH_CLOSE, this->kernel, Point(-1,-1), 2);
 
 		findContours(quadrado_azul, this->contours, this->hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
 
@@ -123,28 +123,33 @@ public:
 	Mat drawEllipse()
 	{
 		Mat img_processada = this->processImage();
+;
+		size_t count;
+		Mat pointsf;
+		RotatedRect box;
 
 		for(size_t i = 0; i < this->contours.size(); i++)
         {
-            size_t count = this->contours[i].size();
+            count = this->contours[i].size();
 
             if (count < 6)
                 break;
 
-            Mat pointsf;
             Mat(this->contours[i]).convertTo(pointsf, CV_32F);
-            RotatedRect box = fitEllipse(pointsf);
+            box = fitEllipse(pointsf);
 
             if( MAX(box.size.width, box.size.height) > MIN(box.size.width, box.size.height)*30 )
                 continue;
 
 
-            ellipse(img_processada, box.center, box.size*0.5f, box.angle, 0, 360, 150, 2, CV_AA);
+            ellipse(img_processada, box.center, box.size*0.5f, box.angle, 0, 360, 180, 2);
 
 
             //Centro da elipse
-            cout << "X: " << box.center.x << "Y: " << box.center.y << endl;
         }
+
+		if (count > 6)
+        	cout << "X: " << box.center.x - this->centerX << "  Y: " << box.center.y - this->centerY << endl;
 
 		return img_processada;
 	}
@@ -244,6 +249,8 @@ int main()
 		}
 
 		Mat frame;
+
+		cap >> frame;
 
 		while (true)
 		{
