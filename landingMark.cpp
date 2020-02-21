@@ -41,44 +41,41 @@ bool IMAGEM = false;
 bool VIDEO = true;
 
 
+size_t countoursSize;
+Mat pointsf;
+RotatedRect box;
+
+
 class LandingMark
 {
 public:
 
-	Mat imagem;
-
-	Mat rot_vec, trans_vec;
-
-	int x, y, z;
+	Mat imagem, kernel;
 
 	int rows, cols;
-
-	int focal_lenght;
-
 	int centerX, centerY;
-
-	Mat camera_matrix, dist_coeffs, kernel;
-
 	int majorEllipseWidth, majorEllipseHeight;
+
+	bool success;
+
 	RotatedRect majorEllipse;
 
 	vector<vector<Point> > contours;
 	vector<Vec4i> hierarchy;
 
+	size_t countoursSize;
+	Mat pointsf;
+	RotatedRect box;
+
 
 	LandingMark()
 	{
-		this->rot_vec = Mat::zeros(4, 1, CV_32F);
-		this->trans_vec = Mat::zeros(3, 1, CV_32F);
-
-		this->x = 0;
-		this->y = 0;
-		this->z = 0;
-
 		this->kernel = Mat::ones(KERNEL_RESOLUTION, KERNEL_RESOLUTION, CV_8U);
 
 		this->majorEllipseWidth = 0;
 		this->majorEllipseHeight = 0;
+	
+		this->success = false;
 	}
 
 
@@ -87,17 +84,8 @@ public:
 		this->rows = img.rows;
 		this->cols = img.cols;
 
-		this->focal_lenght = this->rows;
-
 		this->centerX = img.size().width/2;
 		this->centerY = img.size().height/2;
-
-		this->camera_matrix = (Mat_<double>(3,3) << 
-			this->focal_lenght, 0, this->rows/2,
-			0, this->focal_lenght, this->cols/2,
-			0, 0, 1);
-
-		this->dist_coeffs = Mat::zeros(3, 1, CV_32F);
 	}
 
 
@@ -125,13 +113,10 @@ public:
 	}
 
 
-	bool drawEllipse()
+	bool findEllipse()
 	{
 		this->processImage();
-;
-		size_t countoursSize;
-		Mat pointsf;
-		RotatedRect box;
+
 		bool success = false;
 
 		for(size_t i = 0; i < this->contours.size(); i++)
@@ -160,40 +145,15 @@ public:
 			}
         }
 
-
-		if ( success )
-		{
-			ellipse(this->imagem, this->majorEllipse.center, this->majorEllipse.size*0.5f, this->majorEllipse.angle, 0, 360, 180, 2);
-		}
-
 		return success;
 	}
 
 
-	Mat imfill(Mat img)
+	void drawEllipse()
 	{
-
-		morphologyEx(img, img, MORPH_CLOSE, this->kernel, Point(-1,-1), 3);
-
-		findContours(img, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
-
-
-	    vector<vector<Point> >hull( contours.size() );
-	    for( size_t i = 0; i < contours.size(); i++ )
-	    {
-	        convexHull( contours[i], hull[i] );
-	    }
-
-
-  		for( size_t i = 0; i< contours.size(); i++ )
-    	{
-    		//Scalar color(255, 255, 255);
-	        drawContours( img, contours, 0, 255, -1);
-        	drawContours( img, hull, 0, 255 , -1);
-    	}
-
-    	return img;
+		ellipse(this->imagem, this->majorEllipse.center, this->majorEllipse.size*0.5f, this->majorEllipse.angle, 0, 360, Scalar(255, 0, 0), 2);
 	}
+
 
 
 	Mat imlimiares(Mat hsv, int hsvMin[3], int hsvMax[3])
@@ -202,20 +162,18 @@ public:
 
 		inRange(hsv, Scalar(hsvMin[0], hsvMin[1], hsvMin[2]), Scalar(hsvMax[0], hsvMax[1], hsvMax[2]), hsvtresh);
 
-		//hsvtresh = this->imfill(hsvtresh);
-
 		return hsvtresh;
+	}
+
+	
+	void printDistance()
+	{
+		cout << "X: " << this->majorEllipse.center.x - this->centerX << "  Y: " << this->majorEllipse.center.y - this->centerY << endl;
 	}
 
 
 	void show()
 	{
-		if (this->imagem.empty())
-		{
-			cout << "Sem imagem";
-			return;
-		}
-
 		imshow("this->image", this->imagem);
 	}
 };
@@ -234,7 +192,7 @@ int main()
 		//////////// COM IMAGEM ///////////
 		
 
-		/*LandingMark mark;
+		LandingMark mark;
 
 		Mat img = imread(name_img);
 
@@ -246,11 +204,15 @@ int main()
 
 		mark.setImage(img);
 
-		img = mark.processImage();
+		if ( mark.findEllipse() )
+		{
+			mark.drawEllipse();
+			mark.printDistance();
+		}
 
-		imshow("", img);
+		mark.show();
 
-		waitKey();*/
+		waitKey();
 	}
 	else if(VIDEO)
 	{
@@ -262,7 +224,7 @@ int main()
 		VideoCapture cap(name_video);
 
 		if(!cap.isOpened()){
-			cout << "Error opening video stream or file" << endl;
+			cout << "Erro ao abrir o video" << endl;
 			return -1;
 		}
 
@@ -276,12 +238,13 @@ int main()
 
 			mark.setImage(frame);
 
-			if (mark.drawEllipse())
+			if ( mark.findEllipse() )
 			{
-				cout << "X: " << mark.majorEllipse.center.x - mark.centerX << "  Y: " << mark.majorEllipse.center.y - mark.centerY << endl;
+				mark.drawEllipse();
+				mark.printDistance();
 			}
 
-			imshow("Frame", mark.imagem);
+			mark.show();
 
 			waitKey(20);
 		}
