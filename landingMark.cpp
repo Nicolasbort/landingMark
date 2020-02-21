@@ -59,6 +59,9 @@ public:
 
 	Mat camera_matrix, dist_coeffs, kernel;
 
+	int majorEllipseWidth, majorEllipseHeight;
+	RotatedRect majorEllipse;
+
 	vector<vector<Point> > contours;
 	vector<Vec4i> hierarchy;
 
@@ -73,6 +76,9 @@ public:
 		this->z = 0;
 
 		this->kernel = Mat::ones(KERNEL_RESOLUTION, KERNEL_RESOLUTION, CV_8U);
+
+		this->majorEllipseWidth = 0;
+		this->majorEllipseHeight = 0;
 	}
 
 
@@ -105,59 +111,67 @@ public:
 	}
 
 
-	Mat processImage()
+	void processImage()
 	{
+		Mat temp_img = this->imagem.clone();
 
-        cvtColor(this->imagem, this->imagem, COLOR_BGR2HSV);
+        cvtColor(this->imagem, temp_img, COLOR_BGR2HSV);
 
-		Mat quadrado_azul = this->imlimiares(this->imagem, ARR_MINBLUE, ARR_MAXBLUE);
+		Mat img_quadrado_azul = this->imlimiares(temp_img, ARR_MINBLUE, ARR_MAXBLUE);
 
-		morphologyEx(quadrado_azul, quadrado_azul, MORPH_CLOSE, this->kernel, Point(-1,-1), 2);
+		morphologyEx(img_quadrado_azul, img_quadrado_azul, MORPH_CLOSE, this->kernel, Point(-1,-1), 2);
 
-		findContours(quadrado_azul, this->contours, this->hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
-
-		return quadrado_azul;
+		findContours(img_quadrado_azul, this->contours, this->hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
 	}
 
 
-	Mat drawEllipse()
+	bool drawEllipse()
 	{
-		Mat img_processada = this->processImage();
+		this->processImage();
 ;
-		size_t count;
+		size_t countoursSize;
 		Mat pointsf;
 		RotatedRect box;
+		bool success = false;
 
 		for(size_t i = 0; i < this->contours.size(); i++)
         {
-            count = this->contours[i].size();
+            countoursSize = this->contours[i].size();
 
-            if (count < 6)
-                break;
+            if (countoursSize < 5)
+                continue;
 
             Mat(this->contours[i]).convertTo(pointsf, CV_32F);
             box = fitEllipse(pointsf);
-
-            if( MAX(box.size.width, box.size.height) > MIN(box.size.width, box.size.height)*30 )
-                continue;
-
-
-            ellipse(img_processada, box.center, box.size*0.5f, box.angle, 0, 360, 180, 2);
-
-
-            //Centro da elipse
+			
+			// Verifica se a elipse tem eixos maiores que 120
+			if ( box.size.width > 120 && box.size.height > 120 )
+			{
+				// Pega a maior elipse da imagem
+				if ( box.size.width > this->majorEllipseWidth && box.size.height > this->majorEllipseHeight)
+				{
+					this->majorEllipse = box;
+					success = true;
+				}
+			}
+			else
+			{
+				success = false;
+			}
         }
 
-		if (count > 6)
-        	cout << "X: " << box.center.x - this->centerX << "  Y: " << box.center.y - this->centerY << endl;
 
-		return img_processada;
+		if ( success )
+		{
+			ellipse(this->imagem, this->majorEllipse.center, this->majorEllipse.size*0.5f, this->majorEllipse.angle, 0, 360, 180, 2);
+		}
+
+		return success;
 	}
 
 
 	Mat imfill(Mat img)
 	{
-
 
 		morphologyEx(img, img, MORPH_CLOSE, this->kernel, Point(-1,-1), 3);
 
@@ -211,14 +225,18 @@ public:
 int main()
 {
 
+	const char* name_video = "mark.mp4";
+	const char* name_img = "mark.jpeg";
+
+
 	if (IMAGEM)
 	{
 		//////////// COM IMAGEM ///////////
 		
 
-		LandingMark mark;
+		/*LandingMark mark;
 
-		Mat img = imread("imagem.jpeg");
+		Mat img = imread(name_img);
 
 		if (img.empty())
 		{
@@ -232,7 +250,7 @@ int main()
 
 		imshow("", img);
 
-		waitKey();
+		waitKey();*/
 	}
 	else if(VIDEO)
 	{
@@ -241,7 +259,7 @@ int main()
 
 		LandingMark mark;
 
-		VideoCapture cap("mark.mp4");
+		VideoCapture cap(name_video);
 
 		if(!cap.isOpened()){
 			cout << "Error opening video stream or file" << endl;
@@ -258,9 +276,12 @@ int main()
 
 			mark.setImage(frame);
 
-			frame = mark.drawEllipse();
+			if (mark.drawEllipse())
+			{
+				cout << "X: " << mark.majorEllipse.center.x - mark.centerX << "  Y: " << mark.majorEllipse.center.y - mark.centerY << endl;
+			}
 
-			imshow("Frame", frame);
+			imshow("Frame", mark.imagem);
 
 			waitKey(20);
 		}
