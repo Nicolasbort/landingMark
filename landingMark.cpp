@@ -45,6 +45,8 @@ size_t countoursSize;
 Mat pointsf;
 RotatedRect box;
 
+Mat blue_rect, yellow_circle;
+
 
 class LandingMark
 {
@@ -101,15 +103,18 @@ public:
 
 	void processImage()
 	{
-		Mat temp_img = this->imagem.clone();
+		Mat bitwise_img;
 
-        cvtColor(this->imagem, temp_img, COLOR_BGR2HSV);
+        cvtColor(this->imagem, bitwise_img, COLOR_BGR2HSV);
 
-		Mat img_quadrado_azul = this->imlimiares(temp_img, ARR_MINBLUE, ARR_MAXBLUE);
+		blue_rect = this->imlimiares(bitwise_img, ARR_MINBLUE, ARR_MAXBLUE);
+		yellow_circle = this->imlimiares(bitwise_img, ARR_MINYELLOW, ARR_MAXYELLOW);
 
-		morphologyEx(img_quadrado_azul, img_quadrado_azul, MORPH_CLOSE, this->kernel, Point(-1,-1), 2);
+		bitwise_and(blue_rect, yellow_circle, bitwise_img);
 
-		findContours(img_quadrado_azul, this->contours, this->hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
+		morphologyEx(bitwise_img, bitwise_img, MORPH_CLOSE, this->kernel, Point(-1,-1), 2);
+
+		findContours(bitwise_img, this->contours, this->hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
 	}
 
 
