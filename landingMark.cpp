@@ -6,24 +6,24 @@ using namespace std;
 
 
 //limiares de saturacao e valor
-int MINSAT = 50; //40
-int MAXSAT = 255;
-int MINVAL = 50; //40
-int MAXVAL = 255;
+#define MINSAT 50
+#define MAXSAT 255
 
-//limiares da cor amarela
-int YELLOW = 25; //30
-int DYELLOW = 15; //25
-int MINYELLOW = YELLOW - DYELLOW;
-int MAXYELLOW = YELLOW + DYELLOW;
+#define MINVAL 50
+#define MAXVAL 255
+
+// Limiares da cor amarela
+#define MINYELLOW 10
+#define MAXYELLOW 40
+
+// Limiares da cor azul
+#define MINBLUE 100
+#define MAXBLUE 140
+
+
 int ARR_MAXYELLOW[3] = {MAXYELLOW, MAXSAT, MAXVAL};
 int ARR_MINYELLOW[3] = {MINYELLOW, MINSAT, MINVAL};
 
-//limiares da cor azul
-int BLUE = 120; //110
-int DBLUE = 20; //25
-int MINBLUE = BLUE - DBLUE;
-int MAXBLUE = BLUE + DBLUE;
 int ARR_MAXBLUE[3] = {MAXBLUE, MAXSAT, MAXVAL};
 int ARR_MINBLUE[3] = {MINBLUE, MINSAT, MINVAL};
 
@@ -35,11 +35,6 @@ int KERNEL_RESOLUTION = 7;
 float ARESTA = 500.0f; //aresta da base (em mm)
 float RAIO = 200.0f; //raio do centro da base 
 int RESOLUTION = 50;
-
-
-bool IMAGEM = false;
-bool VIDEO = true;
-
 
 size_t countoursSize;
 Mat pointsf;
@@ -137,7 +132,7 @@ public:
 				Mat(this->contours[i]).convertTo(pointsf, CV_32F);
 				box = fitEllipse(pointsf);
 				
-				// Verifica se a elipse tem eixos maiores que 120
+				// Elimina elipses pequenas
 				if ( box.size.width > 120 && box.size.height > 120 )
 				{
 					// Pega a maior elipse da imagem
@@ -191,21 +186,63 @@ public:
 
 
 
-int main()
+int main(int argc, char* argv[])
 {
 
-	const char* name_video = "mark.mp4";
-	const char* name_img = "mark.jpeg";
-
-
-	if (IMAGEM)
+	if (argc < 2)
 	{
-		//////////// COM IMAGEM ///////////
-		
+		cerr << "Rodar o código > ./NomeDoArquivo \"NomeDoVideo\"\n";
+		return -1;
+	}
+
+	char* file_name = argv[1];
+
+	bool VIDEO = true;
+
+	if (VIDEO)
+	{
 
 		LandingMark mark;
 
-		Mat img = imread(name_img);
+		VideoCapture cap(file_name);
+
+		if (!cap.isOpened())
+		{
+			cout << "Erro ao abrir o video" << endl;
+			return -1;
+		}
+
+		Mat frame;
+
+		cap >> frame;
+
+		while (true)
+		{
+			cap >> frame;
+
+			if (frame.empty())
+				break;
+
+			mark.setImage(frame);
+
+			if ( mark.findEllipse() )
+			{
+				mark.drawEllipse();
+				mark.printDistance();
+			}
+
+			mark.show();
+
+			waitKey(10);
+		}
+		
+	}
+	else
+	{
+		
+		LandingMark mark;
+
+		Mat img = imread(file_name);
 
 		if (img.empty())
 		{
@@ -224,40 +261,5 @@ int main()
 		mark.show();
 
 		waitKey();
-	}
-	else if(VIDEO)
-	{
-		/////////////// COM VIDEO //////////////
-
-
-		LandingMark mark;
-
-		VideoCapture cap(name_video);
-
-		if(!cap.isOpened()){
-			cout << "Erro ao abrir o video" << endl;
-			return -1;
-		}
-
-		Mat frame;
-
-		cap >> frame;
-
-		while (true)
-		{
-			cap >> frame;
-
-			mark.setImage(frame);
-
-			if ( mark.findEllipse() )
-			{
-				mark.drawEllipse();
-				mark.printDistance();
-			}
-
-			mark.show();
-
-			waitKey(10);
-		}
 	}
 }
