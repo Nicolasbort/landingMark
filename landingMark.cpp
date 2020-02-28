@@ -28,7 +28,7 @@ int ARR_MAXBLUE[3] = {MAXBLUE, MAXSAT, MAXVAL};
 int ARR_MINBLUE[3] = {MINBLUE, MINSAT, MINVAL};
 
 //parametros de filtros
-int GAUSSIAN_FILTER = 3;
+int GAUSSIAN_FILTER = 5;
 int KERNEL_RESOLUTION = 7;
 
 //dimensoes da base real
@@ -110,11 +110,11 @@ public:
 		blue_rect = this->imlimiares(bitwise_img, ARR_MINBLUE, ARR_MAXBLUE);
 		yellow_circle = this->imlimiares(bitwise_img, ARR_MINYELLOW, ARR_MAXYELLOW);
 
-		bitwise_and(blue_rect, yellow_circle, bitwise_img);
+		morphologyEx(blue_rect, blue_rect, MORPH_CLOSE, this->kernel, Point(-1,-1), 2);
 
-		morphologyEx(bitwise_img, bitwise_img, MORPH_CLOSE, this->kernel, Point(-1,-1), 2);
+		findContours(blue_rect, this->contours, this->hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
 
-		findContours(bitwise_img, this->contours, this->hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
+		this->imagem = blue_rect;
 	}
 
 
@@ -124,31 +124,37 @@ public:
 
 		bool success = false;
 
-		for(size_t i = 0; i < this->contours.size(); i++)
-        {
-            countoursSize = this->contours[i].size();
-
-            if (countoursSize < 5)
-                continue;
-
-            Mat(this->contours[i]).convertTo(pointsf, CV_32F);
-            box = fitEllipse(pointsf);
-			
-			// Verifica se a elipse tem eixos maiores que 120
-			if ( box.size.width > 120 && box.size.height > 120 )
+		// Remove alguns falsos positivos
+		if (this->contours.size() <= 30)
+		{
+			for(size_t i = 0; i < this->contours.size(); i++)
 			{
-				// Pega a maior elipse da imagem
-				if ( box.size.width > this->majorEllipseWidth && box.size.height > this->majorEllipseHeight)
+				countoursSize = this->contours[i].size();
+
+				if (countoursSize < 5)
+					continue;
+
+				Mat(this->contours[i]).convertTo(pointsf, CV_32F);
+				box = fitEllipse(pointsf);
+				
+				// Verifica se a elipse tem eixos maiores que 120
+				if ( box.size.width > 120 && box.size.height > 120 )
 				{
-					this->majorEllipse = box;
-					success = true;
+					// Pega a maior elipse da imagem
+					if ( box.size.width > this->majorEllipseWidth && box.size.height > this->majorEllipseHeight)
+					{
+						this->majorEllipse = box;
+						success = true;
+					}
+				}
+				else
+				{
+					success = false;
 				}
 			}
-			else
-			{
-				success = false;
-			}
-        }
+		}
+
+		
 
 		return success;
 	}
@@ -251,7 +257,7 @@ int main()
 
 			mark.show();
 
-			waitKey(20);
+			waitKey(10);
 		}
 	}
 }
