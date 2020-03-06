@@ -6,18 +6,18 @@ using namespace std;
 
 
 //limiares de saturacao e valor
-#define MINSAT 50
-#define MAXSAT 255
+#define MINSAT 40
+#define MAXSAT 120
 
-#define MINVAL 50
-#define MAXVAL 255
+#define MINVAL 55
+#define MAXVAL 115
 
 // Limiares da cor amarela
 #define MINYELLOW 10
 #define MAXYELLOW 40
 
 // Limiares da cor azul
-#define MINBLUE 100
+#define MINBLUE 110
 #define MAXBLUE 140
 
 
@@ -47,7 +47,9 @@ class LandingMark
 {
 public:
 
-	Mat imagem, kernel;
+	Mat mainImagem_C3, imageHSV_C3, image_C1; 
+	
+	Mat kernel;
 
 	int rows, cols;
 	int centerX, centerY;
@@ -92,24 +94,20 @@ public:
 
 		this->CamParam(img);
 
-		this->imagem = img;
+		this->mainImagem_C3 = img;
 	}
 
 
 	void processImage()
 	{
-		Mat bitwise_img;
+        cvtColor(this->mainImagem_C3, this->imageHSV_C3, COLOR_BGR2HSV);
 
-        cvtColor(this->imagem, bitwise_img, COLOR_BGR2HSV);
+		this->image_C1 = this->imlimiares(this->imageHSV_C3, ARR_MINBLUE, ARR_MAXBLUE);
+		//yellow_circle = this->imlimiares(this->imageHSV_C3, ARR_MINYELLOW, ARR_MAXYELLOW);
 
-		blue_rect = this->imlimiares(bitwise_img, ARR_MINBLUE, ARR_MAXBLUE);
-		yellow_circle = this->imlimiares(bitwise_img, ARR_MINYELLOW, ARR_MAXYELLOW);
+		morphologyEx(this->image_C1, this->image_C1, MORPH_CLOSE, this->kernel, Point(-1,-1), 2);
 
-		morphologyEx(blue_rect, blue_rect, MORPH_CLOSE, this->kernel, Point(-1,-1), 2);
-
-		findContours(blue_rect, this->contours, this->hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
-
-		this->imagem = blue_rect;
+		findContours(this->image_C1, this->contours, this->hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
 	}
 
 
@@ -133,7 +131,7 @@ public:
 				box = fitEllipse(pointsf);
 				
 				// Elimina elipses pequenas
-				if ( box.size.width > 120 && box.size.height > 120 )
+				if ( box.size.width > 250 && box.size.height > 250 )
 				{
 					// Pega a maior elipse da imagem
 					if ( box.size.width > this->majorEllipseWidth && box.size.height > this->majorEllipseHeight)
@@ -157,7 +155,7 @@ public:
 
 	void drawEllipse()
 	{
-		ellipse(this->imagem, this->majorEllipse.center, this->majorEllipse.size*0.5f, this->majorEllipse.angle, 0, 360, Scalar(255, 0, 0), 2);
+		ellipse(this->mainImagem_C3, this->majorEllipse.center, this->majorEllipse.size*0.5f, this->majorEllipse.angle, 0, 360, Scalar(255, 0, 0), 2);
 	}
 
 
@@ -180,7 +178,7 @@ public:
 
 	void show()
 	{
-		imshow("this->image", this->imagem);
+		imshow("this->image", this->mainImagem_C3);
 	}
 };
 
@@ -233,7 +231,11 @@ int main(int argc, char* argv[])
 
 			mark.show();
 
-			waitKey(10);
+			int key = waitKey(30);
+
+            // Pressionar espaço para salvar o frame atual
+            if (key == 32)
+                imwrite("frame.jpg", mark.mainImagem_C3);
 		}
 		
 	}
