@@ -101,13 +101,11 @@ public:
 
 	Mat imfill(Mat img)
 	{
-		Mat kernel = Mat::ones(Size(KERNEL_RESOLUTION, KERNEL_RESOLUTION), CV_8U);
-
-		morphologyEx(img, img, MORPH_CLOSE, kernel, Point(-1, -1), 3);
+		morphologyEx(img, img, MORPH_CLOSE, this->kernel, Point(-1, -1), 3);
 
 		findContours(img, this->contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
-	    vector<vector<Point> >hull( this->contours.size() );
+	    vector<vector<Point>> hull( this->contours.size() );
 
 		for( size_t i = 0; i < this->contours.size(); i++ )
 		{
