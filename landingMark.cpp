@@ -5,49 +5,51 @@ using namespace cv;
 using namespace std;
 
 
-//limiares de saturacao e valor
-#define MINSAT 40
-#define MAXSAT 120
-
-#define MINVAL 55
-#define MAXVAL 115
-
-// Limiares da cor amarela
-#define MINYELLOW 10
-#define MAXYELLOW 40
 
 // Limiares da cor azul
-#define MINBLUE 110
-#define MAXBLUE 140
+#define MINSATBLUE 40   //40
+#define MAXSATBLUE 255	//120
+
+#define MINVALBLUE 40	//55
+#define MAXVALBLUE 255	//130
+
+#define MINBLUE 85		//110
+#define MAXBLUE 140		//140
+
+// Limiares da cor amarela
+#define MINSATYELLOW 40		//100
+#define MAXSATYELLOW 255	//195
+
+#define MINVALYELLOW 40		//75
+#define MAXVALYELLOW 255	//225
+
+#define MINYELLOW 5			//5
+#define MAXYELLOW 55		//55
 
 
-int ARR_MAXYELLOW[3] = {MAXYELLOW, MAXSAT, MAXVAL};
-int ARR_MINYELLOW[3] = {MINYELLOW, MINSAT, MINVAL};
 
-int ARR_MAXBLUE[3] = {MAXBLUE, MAXSAT, MAXVAL};
-int ARR_MINBLUE[3] = {MINBLUE, MINSAT, MINVAL};
+int ARR_MAXBLUE[3] = {MAXBLUE, MAXSATBLUE, MAXVALBLUE};
+int ARR_MINBLUE[3] = {MINBLUE, MINSATBLUE, MINVALBLUE};
+
+int ARR_MAXYELLOW[3] = {MAXYELLOW, MAXSATYELLOW, MAXVALYELLOW};
+int ARR_MINYELLOW[3] = {MINYELLOW, MINSATYELLOW, MINVALYELLOW};
 
 //parametros de filtros
-int GAUSSIAN_FILTER = 5;
+int GAUSSIAN_FILTER = 3;
 int KERNEL_RESOLUTION = 7;
 
-//dimensoes da base real
-float ARESTA = 500.0f; //aresta da base (em mm)
-float RAIO = 200.0f; //raio do centro da base 
-int RESOLUTION = 50;
 
 size_t countoursSize;
 Mat pointsf;
 RotatedRect box;
-
-Mat blue_rect, yellow_circle;
 
 
 class LandingMark
 {
 public:
 
-	Mat mainImagem_C3, imageHSV_C3, image_C1; 
+	Mat mainImagem_C3, imageHSV_C3, image_blue_C1, image_yellow_C1, image_final_C1; 
+	Mat output;
 	
 	Mat kernel;
 
@@ -60,7 +62,6 @@ public:
 	RotatedRect majorEllipse;
 
 	vector<vector<Point> > contours;
-	vector<Vec4i> hierarchy;
 
 	size_t countoursSize;
 	Mat pointsf;
@@ -98,16 +99,76 @@ public:
 	}
 
 
+	Mat imfill(Mat img)
+	{
+		Mat kernel = Mat::ones(Size(KERNEL_RESOLUTION, KERNEL_RESOLUTION), CV_8U);
+
+		morphologyEx(img, img, MORPH_CLOSE, kernel, Point(-1, -1), 3);
+
+		findContours(img, this->contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+	    vector<vector<Point> >hull( this->contours.size() );
+
+		for( size_t i = 0; i < this->contours.size(); i++ )
+		{
+		 	convexHull( this->contours[i], hull[i] );
+		}
+
+		if (hull.size() == 1)
+		{
+			drawContours(img, hull, 0, 255, -1);
+		}
+		else if (hull.size() > 1)
+		{
+			float biggestArea = 0;
+			vector<Point> biggestContour;
+
+			for ( size_t i = 0; i < hull.size(); i++ )
+			{
+				float area = contourArea(hull[i]);
+
+				if (area > biggestArea)
+				{
+					biggestArea = area;
+					biggestContour = hull[i];
+				}
+			}
+			vector<vector<Point>> bigContours;
+			bigContours.push_back(biggestContour);
+			drawContours(img, bigContours, 0, 255, -1);
+		}
+
+		return img;
+	}
+
+	Mat imlimiares(Mat hsv, int hsvMin[3], int hsvMax[3])
+	{
+		Mat hsvtresh;
+
+		inRange(hsv, Scalar(hsvMin[0], hsvMin[1], hsvMin[2]), Scalar(hsvMax[0], hsvMax[1], hsvMax[2]), hsvtresh);
+
+		hsvtresh = this->imfill(hsvtresh);
+
+		return hsvtresh;
+	}
+
+
 	void processImage()
 	{
         cvtColor(this->mainImagem_C3, this->imageHSV_C3, COLOR_BGR2HSV);
 
-		this->image_C1 = this->imlimiares(this->imageHSV_C3, ARR_MINBLUE, ARR_MAXBLUE);
-		//yellow_circle = this->imlimiares(this->imageHSV_C3, ARR_MINYELLOW, ARR_MAXYELLOW);
+		Mat hsv, output;
 
-		morphologyEx(this->image_C1, this->image_C1, MORPH_CLOSE, this->kernel, Point(-1,-1), 2);
+		// Pega a area azul
+		this->image_blue_C1 = this->imlimiares(this->imageHSV_C3, ARR_MINBLUE, ARR_MAXBLUE);
+		bitwise_and(this->imageHSV_C3, this->imageHSV_C3, hsv, this->image_blue_C1);
 
-		findContours(this->image_C1, this->contours, this->hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0,0));
+		// Pega a area amarela
+		this->image_yellow_C1 = this->imlimiares(this->imageHSV_C3, ARR_MINYELLOW, ARR_MAXYELLOW);
+		bitwise_and(hsv, hsv, output, this->image_yellow_C1);
+
+		// Pega apenas a area do mark
+		bitwise_and(this->image_blue_C1, this->image_yellow_C1, this->image_final_C1);
 	}
 
 
@@ -115,10 +176,12 @@ public:
 	{
 		this->processImage();
 
+		findContours(this->image_final_C1, this->contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
 		bool success = false;
 
 		// Remove alguns falsos positivos
-		if (this->contours.size() <= 30)
+		if (this->contours.size() <= 500)
 		{
 			for(size_t i = 0; i < this->contours.size(); i++)
 			{
@@ -131,7 +194,7 @@ public:
 				box = fitEllipse(pointsf);
 				
 				// Elimina elipses pequenas
-				if ( box.size.width > 250 && box.size.height > 250 )
+				if ( box.size.width > 120 && box.size.height > 120 )
 				{
 					// Pega a maior elipse da imagem
 					if ( box.size.width > this->majorEllipseWidth && box.size.height > this->majorEllipseHeight)
@@ -146,9 +209,6 @@ public:
 				}
 			}
 		}
-
-		
-
 		return success;
 	}
 
@@ -159,15 +219,6 @@ public:
 	}
 
 
-
-	Mat imlimiares(Mat hsv, int hsvMin[3], int hsvMax[3])
-	{
-		Mat hsvtresh;
-
-		inRange(hsv, Scalar(hsvMin[0], hsvMin[1], hsvMin[2]), Scalar(hsvMax[0], hsvMax[1], hsvMax[2]), hsvtresh);
-
-		return hsvtresh;
-	}
 
 	
 	void printDistance()
@@ -216,12 +267,14 @@ int main(int argc, char* argv[])
 
 		while (true)
 		{
+
 			cap >> frame;
 
 			if (frame.empty())
 				break;
 
 			mark.setImage(frame);
+			mark.processImage();
 
 			if ( mark.findEllipse() )
 			{
@@ -229,13 +282,15 @@ int main(int argc, char* argv[])
 				mark.printDistance();
 			}
 
+			//imshow("", img);
+
 			mark.show();
 
-			int key = waitKey(30);
+			int key = waitKey(20);
 
             // Pressionar espaço para salvar o frame atual
             if (key == 32)
-                imwrite("frame.jpg", mark.mainImagem_C3);
+                imwrite("frame.jpg", mark.imageHSV_C3);
 		}
 		
 	}
@@ -253,12 +308,13 @@ int main(int argc, char* argv[])
 		}
 
 		mark.setImage(img);
+		mark.processImage();
 
-		if ( mark.findEllipse() )
-		{
-			mark.drawEllipse();
-			mark.printDistance();
-		}
+		// if ( mark.findEllipse() )
+		// {
+		// 	mark.drawEllipse();
+		// 	mark.printDistance();
+		// }
 
 		mark.show();
 
