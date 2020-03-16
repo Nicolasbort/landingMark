@@ -17,13 +17,13 @@ using namespace std;
 #define MAXBLUE 140		//140
 
 // Limiares da cor amarela
-#define MINSATYELLOW 40		//100
+#define MINSATYELLOW 90		//100
 #define MAXSATYELLOW 255	//195
 
-#define MINVALYELLOW 40		//75
-#define MAXVALYELLOW 255	//225
+#define MINVALYELLOW 90		//75
+#define MAXVALYELLOW 235	//225
 
-#define MINYELLOW 5			//5
+#define MINYELLOW 7			//5
 #define MAXYELLOW 55		//55
 
 
@@ -49,24 +49,19 @@ class LandingMark
 public:
 
 	Mat mainImagem_C3, imageHSV_C3, image_blue_C1, image_yellow_C1, image_final_C1; 
-	Mat output;
 	
 	Mat kernel;
 
 	int rows, cols;
 	int centerX, centerY;
 	int majorEllipseWidth, majorEllipseHeight;
+	int minEllipseWidth, minEllipseHeight;
 
-	bool success;
+	bool success, fstTime;
 
 	RotatedRect majorEllipse;
 
 	vector<vector<Point> > contours;
-
-	size_t countoursSize;
-	Mat pointsf;
-	RotatedRect box;
-
 
 	LandingMark()
 	{
@@ -76,6 +71,7 @@ public:
 		this->majorEllipseHeight = 0;
 	
 		this->success = false;
+		this->fstTime = true;
 	}
 
 
@@ -86,6 +82,9 @@ public:
 
 		this->centerX = img.size().width/2;
 		this->centerY = img.size().height/2;
+
+		this->minEllipseHeight = 0.05 * this->rows;
+		this->minEllipseWidth = 0.05 * this->cols;
 	}
 
 
@@ -93,7 +92,11 @@ public:
 	{
 		GaussianBlur(img, img, Size(GAUSSIAN_FILTER, GAUSSIAN_FILTER), 0);
 
-		this->CamParam(img);
+		if (this->fstTime)
+		{
+			this->CamParam(img);
+			this->fstTime = false;
+		}
 
 		this->mainImagem_C3 = img;
 	}
@@ -165,8 +168,12 @@ public:
 		this->image_yellow_C1 = this->imlimiares(this->imageHSV_C3, ARR_MINYELLOW, ARR_MAXYELLOW);
 		bitwise_and(hsv, hsv, output, this->image_yellow_C1);
 
-		// Pega apenas a area do mark
+
+		// // Pega apenas a area do mark
 		bitwise_and(this->image_blue_C1, this->image_yellow_C1, this->image_final_C1);
+
+		//Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(KERNEL_RESOLUTION, KERNEL_RESOLUTION));
+		//morphologyEx(this->image_final_C1, this->image_final_C1, MORPH_OPEN, kernel, Point(-1, -1), 2);
 	}
 
 
@@ -178,35 +185,33 @@ public:
 
 		bool success = false;
 
-		// Remove alguns falsos positivos
-		if (this->contours.size() <= 500)
+
+		for(size_t i = 0; i < this->contours.size(); i++)
 		{
-			for(size_t i = 0; i < this->contours.size(); i++)
+			countoursSize = this->contours[i].size();
+
+			if (countoursSize < 5)
+				continue;
+
+			Mat(this->contours[i]).convertTo(pointsf, CV_32F);
+			box = fitEllipse(pointsf);
+			
+			// Elimina elipses pequenas
+			if ( box.size.width > this->minEllipseWidth && box.size.height > this->minEllipseHeight )
 			{
-				countoursSize = this->contours[i].size();
-
-				if (countoursSize < 5)
-					continue;
-
-				Mat(this->contours[i]).convertTo(pointsf, CV_32F);
-				box = fitEllipse(pointsf);
-				
-				// Elimina elipses pequenas
-				if ( box.size.width > 120 && box.size.height > 120 )
+				// Pega a maior elipse da imagem
+				if ( box.size.width > this->majorEllipseWidth && box.size.height > this->majorEllipseHeight)
 				{
-					// Pega a maior elipse da imagem
-					if ( box.size.width > this->majorEllipseWidth && box.size.height > this->majorEllipseHeight)
-					{
-						this->majorEllipse = box;
-						success = true;
-					}
-				}
-				else
-				{
-					success = false;
+					this->majorEllipse = box;
+					success = true;
 				}
 			}
+			else
+			{
+				success = false;
+			}
 		}
+		
 		return success;
 	}
 
@@ -279,8 +284,6 @@ int main(int argc, char* argv[])
 				mark.drawEllipse();
 				mark.printDistance();
 			}
-
-			//imshow("", img);
 
 			mark.show();
 
