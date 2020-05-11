@@ -1,47 +1,40 @@
-#include<opencv2/opencv.hpp>
-#include<iostream>
+#include "../include/defines.hpp"
 
 using namespace cv;
 using namespace std;
 
-
-
-// Limiares da cor azul
-#define MINSATBLUE 40   //40
-#define MAXSATBLUE 255	//120
-
-#define MINVALBLUE 40	//55
-#define MAXVALBLUE 255	//130
-
-#define MINBLUE 85		//110
-#define MAXBLUE 140		//140
-
-// Limiares da cor amarela
-#define MINSATYELLOW 90		//100
-#define MAXSATYELLOW 255	//195
-
-#define MINVALYELLOW 90		//75
-#define MAXVALYELLOW 235	//225
-
-#define MINYELLOW 7			//5
-#define MAXYELLOW 55		//55
-
-
-
-int ARR_MAXBLUE[3] = {MAXBLUE, MAXSATBLUE, MAXVALBLUE};
-int ARR_MINBLUE[3] = {MINBLUE, MINSATBLUE, MINVALBLUE};
-
-int ARR_MAXYELLOW[3] = {MAXYELLOW, MAXSATYELLOW, MAXVALYELLOW};
-int ARR_MINYELLOW[3] = {MINYELLOW, MINSATYELLOW, MINVALYELLOW};
-
-//parametros de filtros
-int GAUSSIAN_FILTER = 3;
-int KERNEL_RESOLUTION = 7;
-
+#define DEGGUBCOLOR false
 
 size_t countoursSize;
 Mat pointsf;
 RotatedRect box;
+
+
+// Arrays utilizados no inRange
+int ARR_MAXBLUE[3]   = {MAXBLUE, MAXSATBLUE, MAXVALBLUE};
+int ARR_MINBLUE[3]   = {MINBLUE, MINSATBLUE, MINVALBLUE};
+
+int ARR_MAXYELLOW[3] = {MAXYELLOW, MAXSATYELLOW, MAXVALYELLOW};
+int ARR_MINYELLOW[3] = {MINYELLOW, MINSATYELLOW, MINVALYELLOW};
+
+
+bool isSquare(Rect rectangle)
+{
+	if (rectangle.x >= rectangle.y)
+	{
+		if ( (rectangle.x - rectangle.y) <= 0.2 * rectangle.x )
+			return true;
+		else
+			return false;
+	}
+	else
+	{
+		if ( (rectangle.y - rectangle.x) <= 0.2 * rectangle.y )
+			return true;
+		else
+			return false;
+	}
+}
 
 
 class LandingMark
@@ -60,6 +53,8 @@ public:
 	bool success, fstTime;
 
 	RotatedRect majorEllipse;
+
+	Rect mark;
 
 	vector<vector<Point> > contours;
 
@@ -160,6 +155,12 @@ public:
 
 		Mat hsv, output;
 
+// Usado para testar parametros de cores diferentes sem utilizar o imfill
+#if DEBBUGCOLOR
+		inRange(imageHSV_C3, Scalar(ARR_MINBLUE[0], ARR_MINBLUE[1], ARR_MINBLUE[2]), Scalar(ARR_MAXBLUE[0], ARR_MAXBLUE[1], ARR_MAXBLUE[2]), image_blue_C1);
+		inRange(imageHSV_C3, Scalar(ARR_MINYELLOW[0], ARR_MINYELLOW[1], ARR_MINYELLOW[2]), Scalar(ARR_MAXYELLOW[0], ARR_MAXYELLOW[1], ARR_MAXYELLOW[2]), image_yellow_C1);
+#else	
+
 		// Pega a area azul
 		this->image_blue_C1 = this->imlimiares(this->imageHSV_C3, ARR_MINBLUE, ARR_MAXBLUE);
 		bitwise_and(this->imageHSV_C3, this->imageHSV_C3, hsv, this->image_blue_C1);
@@ -167,13 +168,47 @@ public:
 		// Pega a area amarela
 		this->image_yellow_C1 = this->imlimiares(this->imageHSV_C3, ARR_MINYELLOW, ARR_MAXYELLOW);
 		bitwise_and(hsv, hsv, output, this->image_yellow_C1);
+		
+#endif
 
-
-		// // Pega apenas a area do mark
+		// Pega apenas a area do mark
 		bitwise_and(this->image_blue_C1, this->image_yellow_C1, this->image_final_C1);
+	}
 
-		//Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(KERNEL_RESOLUTION, KERNEL_RESOLUTION));
-		//morphologyEx(this->image_final_C1, this->image_final_C1, MORPH_OPEN, kernel, Point(-1, -1), 2);
+
+	bool findSquare()
+	{
+		this->processImage();
+
+		findContours(this->image_final_C1, this->contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+		bool success = false;
+
+		for (int i=0; i<this->contours.size(); i++)
+		{
+			Rect currentRect = boundingRect( this->contours[i] );
+
+			this->mark = currentRect;
+			return true;
+
+			/*
+			if ( isSquare(currentRect) )
+			{
+				this->mark = currentRect;
+				return true;
+			}
+			else
+			{
+				return false;
+			}
+			*/
+		}
+	}
+
+
+	void drawSquare()
+	{
+		rectangle(this->mainImagem_C3, this->mark, Scalar(0, 255, 255), 2);
 	}
 
 
@@ -211,7 +246,7 @@ public:
 				success = false;
 			}
 		}
-		
+
 		return success;
 	}
 
@@ -222,17 +257,17 @@ public:
 	}
 
 
-
 	
 	void printDistance()
 	{
-		cout << "X: " << this->majorEllipse.center.x - this->centerX << "  Y: " << this->majorEllipse.center.y - this->centerY << endl;
+		//cout << "X: " << this->majorEllipse.center.x - this->centerX << "  Y: " << this->majorEllipse.center.y - this->centerY << endl;
+		cout << "( " << (mark.x + (mark.width/2)) - centerX << ", " << (mark.y + (mark.height/2)) - centerY << " )\n";
 	}
 
 
 	void show()
 	{
-		imshow("this->image", this->mainImagem_C3);
+		imshow("Main_image", this->mainImagem_C3);
 	}
 };
 
@@ -266,23 +301,26 @@ int main(int argc, char* argv[])
 
 		Mat frame;
 
-		cap >> frame;
+		int countWrite = 0;
 
 		while (true)
 		{
 
 			cap >> frame;
 
+			//resize(frame, frame, Size(1200, 600));
+
 			if (frame.empty())
 				break;
 
 			mark.setImage(frame);
-			mark.processImage();
-
-			if ( mark.findEllipse() )
+			
+			if ( mark.findSquare() )
 			{
-				mark.drawEllipse();
+				mark.drawSquare();
 				mark.printDistance();
+
+				//circle(mark.mainImagem_C3, Point(mark.mark.x + (mark.mark.width/2), mark.mark.y + (mark.mark.height/2)), 30, 150, 3);
 			}
 
 			mark.show();
@@ -291,7 +329,10 @@ int main(int argc, char* argv[])
 
             // Pressionar espaço para salvar o frame atual
             if (key == 32)
-                imwrite("frame.jpg", mark.imageHSV_C3);
+			{
+                imwrite("frame"+to_string(countWrite)+".jpeg", mark.mainImagem_C3);
+				countWrite++;
+			}
 		}
 		
 	}
